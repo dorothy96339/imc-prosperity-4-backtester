@@ -5,7 +5,7 @@ from typing import Optional
 from prosperity4bt.datamodel import Symbol, Trade
 from prosperity4bt.file_reader import FileReader
 
-DEFAULT_POSITION_LIMIT = 50
+DEFAULT_POSITION_LIMIT = 10
 
 LIMITS: dict[str, int] = {
     "EMERALDS": 80,
