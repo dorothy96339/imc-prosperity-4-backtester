@@ -1,7 +1,6 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
-import pandas as pd
 
 from prosperity4bt.datamodel import Symbol, Trade
 from prosperity4bt.file_reader import FileReader
@@ -16,15 +15,15 @@ LIMITS: dict[str, int] = {
     "HYDROGEL_PACK": 200,
     "VELVETFRUIT_EXTRACT": 200,
     "VEV_4000": 300,
-    "VEV_4500": 300,
-    "VEV_5000": 300,
-    "VEV_5100": 300,
-    "VEV_5200": 300,
-    "VEV_5300": 300,
-    "VEV_5400": 300,
-    "VEV_5500": 300,
-    "VEV_6000": 300,
-    "VEV_6500": 300,
+    "VEV_4500": 300, 
+    "VEV_5000": 300, 
+    "VEV_5100": 300, 
+    "VEV_5200": 300, 
+    "VEV_5300": 300, 
+    "VEV_5400": 300, 
+    "VEV_5500": 300, 
+    "VEV_6000": 300, 
+    "VEV_6500": 300
 }
 
 
@@ -49,11 +48,14 @@ class PriceRow:
 
 def get_column_values(columns: list[str], indices: list[int]) -> list[int]:
     values = []
+
     for index in indices:
         value = columns[index]
         if value == "":
             break
+
         values.append(int(value))
+
     return values
 
 
@@ -73,6 +75,7 @@ class ObservationRow:
 class BacktestData:
     round_num: int
     day_num: int
+
     prices: dict[int, dict[Symbol, PriceRow]]
     trades: dict[int, dict[Symbol, list[Trade]]]
     observations: dict[int, ObservationRow]
@@ -93,6 +96,7 @@ def create_backtest_data(
 
     products = sorted(set(row.product for row in prices))
     profit_loss = {product: 0.0 for product in products}
+
     observations_by_timestamp = {row.timestamp: row for row in observations}
 
     return BacktestData(
@@ -107,68 +111,67 @@ def create_backtest_data(
 
 
 def has_day_data(file_reader: FileReader, round_num: int, day_num: int) -> bool:
-    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.parquet"]) as file:
+    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]) as file:
         return file is not None
 
 
 def read_day_data(file_reader: FileReader, round_num: int, day_num: int, no_names: bool) -> BacktestData:
-
-    # ---------------------------------------------------------------- #
-    # Prices                                                            #
-    # ---------------------------------------------------------------- #
     prices = []
-    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.parquet"]) as file:
+    with file_reader.file([f"round{round_num}", f"prices_round_{round_num}_day_{day_num}.csv"]) as file:
         if file is None:
             raise ValueError(f"Prices data is not available for round {round_num} day {day_num}")
 
-        df = pd.read_parquet(file)
-        for _, r in df.iterrows():
-            prices.append(PriceRow(
-                day=int(r["day"]),
-                timestamp=int(r["timestamp"]),
-                product=r["product"],
-                bid_prices=[int(r[c]) for c in ["bid_price_1", "bid_price_2", "bid_price_3"] if pd.notna(r.get(c, float("nan"))) and r.get(c) != ""],
-                bid_volumes=[int(r[c]) for c in ["bid_volume_1", "bid_volume_2", "bid_volume_3"] if pd.notna(r.get(c, float("nan"))) and r.get(c) != ""],
-                ask_prices=[int(r[c]) for c in ["ask_price_1", "ask_price_2", "ask_price_3"] if pd.notna(r.get(c, float("nan"))) and r.get(c) != ""],
-                ask_volumes=[int(r[c]) for c in ["ask_volume_1", "ask_volume_2", "ask_volume_3"] if pd.notna(r.get(c, float("nan"))) and r.get(c) != ""],
-                mid_price=float(r["mid_price"]),
-                profit_loss=float(r["profit_loss"]),
-            ))
+        for line in file.read_text(encoding="utf-8").splitlines()[1:]:
+            columns = line.split(";")
 
-    # ---------------------------------------------------------------- #
-    # Trades                                                            #
-    # ---------------------------------------------------------------- #
+            prices.append(
+                PriceRow(
+                    day=int(columns[0]),
+                    timestamp=int(columns[1]),
+                    product=columns[2],
+                    bid_prices=get_column_values(columns, [3, 5, 7]),
+                    bid_volumes=get_column_values(columns, [4, 6, 8]),
+                    ask_prices=get_column_values(columns, [9, 11, 13]),
+                    ask_volumes=get_column_values(columns, [10, 12, 14]),
+                    mid_price=float(columns[15]),
+                    profit_loss=float(columns[16]),
+                )
+            )
+
     trades = []
-    with file_reader.file([f"round{round_num}", f"trades_round_{round_num}_day_{day_num}.parquet"]) as file:
+    with file_reader.file([f"round{round_num}", f"trades_round_{round_num}_day_{day_num}.csv"]) as file:
         if file is not None:
-            df = pd.read_parquet(file)
-            for _, r in df.iterrows():
-                trades.append(Trade(
-                    symbol=r["symbol"],
-                    price=int(float(r["price"])),
-                    quantity=int(r["quantity"]),
-                    buyer=r["buyer"],
-                    seller=r["seller"],
-                    timestamp=int(r["timestamp"]),
-                ))
+            for line in file.read_text(encoding="utf-8").splitlines()[1:]:
+                columns = line.split(";")
 
-    # ---------------------------------------------------------------- #
-    # Observations                                                      #
-    # ---------------------------------------------------------------- #
+                trades.append(
+                    Trade(
+                        symbol=columns[3],
+                        price=int(float(columns[5])),
+                        quantity=int(columns[6]),
+                        buyer=columns[1],
+                        seller=columns[2],
+                        timestamp=int(columns[0]),
+                    )
+                )
+
     observations = []
-    with file_reader.file([f"round{round_num}", f"observations_round_{round_num}_day_{day_num}.parquet"]) as file:
+    with file_reader.file([f"round{round_num}", f"observations_round_{round_num}_day_{day_num}.csv"]) as file:
         if file is not None:
-            df = pd.read_parquet(file)
-            for _, r in df.iterrows():
-                observations.append(ObservationRow(
-                    timestamp=int(r["timestamp"]),
-                    bidPrice=float(r["bidPrice"]),
-                    askPrice=float(r["askPrice"]),
-                    transportFees=float(r["transportFees"]),
-                    exportTariff=float(r["exportTariff"]),
-                    importTariff=float(r["importTariff"]),
-                    sugarPrice=float(r["sugarPrice"]),
-                    sunlightIndex=float(r["sunlightIndex"]),
-                ))
+            for line in file.read_text(encoding="utf-8").splitlines()[1:]:
+                columns = line.split(",")
+
+                observations.append(
+                    ObservationRow(
+                        timestamp=int(columns[0]),
+                        bidPrice=float(columns[1]),
+                        askPrice=float(columns[2]),
+                        transportFees=float(columns[3]),
+                        exportTariff=float(columns[4]),
+                        importTariff=float(columns[5]),
+                        sugarPrice=float(columns[6]),
+                        sunlightIndex=float(columns[7]),
+                    )
+                )
 
     return create_backtest_data(round_num, day_num, prices, trades, observations)
